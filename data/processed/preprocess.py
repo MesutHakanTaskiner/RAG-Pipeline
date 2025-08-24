@@ -192,3 +192,72 @@ def extract_page_content(doc, page_index: int, tables_map: Dict[int, str]) -> Pa
 
     tables_text = tables_map.get(page_num, "")
     return PageContent(page_num=page_num, text=text, blocks=blocks, tables_text=tables_text)
+
+
+@dataclasses.dataclass
+class Chunk:
+    id: str
+    doc_id: str
+    year: Optional[int]
+    page_start: int
+    page_end: int
+    section_path: str
+    text: str
+    tokens_est: int
+    source_path: str
+    sha256: str
+
+
+def build_section_paths(page_contents: List[PageContent]) -> List[Tuple[str, int, int, str]]:
+    """
+    Collect section path candidates from heading-like blocks.
+    Returns: list of tuples (section_path, page_num, block_index, block_text)
+    """
+    paths: List[Tuple[str, int, int, str]] = []
+    current_path: List[str] = []
+    for pc in page_contents:
+        for bi, b in enumerate(pc.blocks):
+            txt = " ".join(span.get('text', '') for line in b.get('lines', []) for span in line.get('spans', []))
+            txt = normalize_line(txt)
+            if not txt:
+                continue
+            if block_is_heading(b):
+                if re.match(r"^(\d+[\.|\)]\s+.*)$", txt):
+                    current_path = [txt]
+                else:
+                    if len(current_path) >= 3:
+                        current_path = current_path[:2]
+                    current_path.append(txt)
+                paths.append((" / ".join(current_path), pc.page_num, bi, txt))
+    return paths
+
+
+def split_text_with_overlap(text: str, min_chars: int, max_chars: int, overlap: int) -> List[str]:
+    """Split by sentence boundaries when possible; hard-split with overlap otherwise."""
+    text = text.strip()
+    if not text:
+        return []
+
+    sentences = re.split(r"(?<=[\.!?…])\s+", text)
+    chunks: List[str] = []
+    buf = ""
+    for sent in sentences:
+        if len(buf) + len(sent) + 1 <= max_chars:
+            buf = (buf + " " + sent).strip()
+        else:
+            if len(buf) >= min_chars:
+                chunks.append(buf)
+                carry = buf[-overlap:] if overlap > 0 and len(buf) > overlap else ""
+                buf = (carry + " " + sent).strip()
+            else:
+                # handle very long single sentences
+                while len(buf + " " + sent) > max_chars:
+                    part = (buf + " " + sent)[:max_chars]
+                    chunks.append(part.strip())
+                    carry = part[-overlap:] if overlap > 0 and len(part) > overlap else ""
+                    sent = carry + (buf + " " + sent)[max_chars:]
+                    buf = ""
+                buf = (buf + " " + sent).strip()
+    if buf:
+        chunks.append(buf)
+    return [c.strip() for c in chunks if c.strip()]
