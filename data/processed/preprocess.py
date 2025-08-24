@@ -261,3 +261,83 @@ def split_text_with_overlap(text: str, min_chars: int, max_chars: int, overlap: 
     if buf:
         chunks.append(buf)
     return [c.strip() for c in chunks if c.strip()]
+
+
+def chunk_document(
+    doc_id: str,
+    year: Optional[int],
+    page_contents: List[PageContent],
+    sha256sum: str,
+    source_path: str,
+    min_chars: int,
+    max_chars: int,
+    overlap: int
+) -> List[Chunk]:
+    # Section paths
+    paths = build_section_paths(page_contents)
+
+    # Merge page text; include tables inline; NO labels/markers
+    page_texts: List[Tuple[int, str]] = []
+    page_lines_for_header: List[List[str]] = []
+    for pc in page_contents:
+        combined = pc.text
+        if pc.tables_text:
+            combined = (combined + "\n\n" + pc.tables_text).strip()
+        lines = [l for l in pc.text.splitlines() if normalize_line(l)]
+        page_lines_for_header.append(lines)
+        page_texts.append((pc.page_num, combined))
+
+    hf = detect_repeating_header_footer(page_lines_for_header)
+
+    def clean_hf(text: str) -> str:
+        lines = text.splitlines()
+        cleaned = []
+        for l in lines:
+            nl = normalize_line(l)
+            if nl and (nl in hf.header_lines or nl in hf.footer_lines):
+                continue
+            cleaned.append(l)
+        out = "\n".join(cleaned)
+        out = re.sub(r"[ \t]+", " ", out)
+        out = re.sub(r"\n{3,}", "\n\n", out)
+        return out.strip()
+
+    # Concatenate pages with blank-line separation (NO page markers)
+    all_text_parts = []
+    for _, txt in page_texts:
+        cleaned = clean_hf(txt)
+        if cleaned:
+            all_text_parts.append(cleaned)
+    full_text = "\n\n".join(all_text_parts).strip()
+
+    page_start = page_contents[0].page_num if page_contents else 1
+    page_end = page_contents[-1].page_num if page_contents else 1
+
+    raw_chunks = split_text_with_overlap(full_text, min_chars, max_chars, overlap)
+
+    # Assign best-effort section_path per chunk (last heading seen inside the chunk)
+    sections_sorted = sorted(paths, key=lambda x: (x[1], x[2]))  # (section_path, page, block_idx, title)
+
+    def infer_section_for_chunk(ch_text: str) -> str:
+        best = ""
+        for spath, _, _, title in sections_sorted:
+            if title and title in ch_text:
+                best = spath
+        return best or (sections_sorted[-1][0] if sections_sorted else "")
+
+    chunks: List[Chunk] = []
+    for i, ch in enumerate(raw_chunks, start=1):
+        section_path = infer_section_for_chunk(ch)
+        chunks.append(Chunk(
+            id=f"{doc_id}::chunk_{i:04d}",
+            doc_id=doc_id,
+            year=year,
+            page_start=page_start,
+            page_end=page_end,
+            section_path=section_path,
+            text=ch,
+            tokens_est=estimate_tokens(ch),
+            source_path=str(source_path),
+            sha256=sha256sum,
+        ))
+    return chunks
