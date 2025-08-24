@@ -76,3 +76,40 @@ def infer_year_from_path(path: Path) -> Optional[int]:
 
 def normalize_line(s: str) -> str:
     return re.sub(r"\s+", " ", s.strip())
+
+
+@dataclasses.dataclass
+class HeaderFooter:
+    header_lines: List[str]
+    footer_lines: List[str]
+
+
+def detect_repeating_header_footer(
+    page_text_lines: List[List[str]], top_k: int = 2, bottom_k: int = 2, min_repeat: float = 0.6
+) -> HeaderFooter:
+    """
+    Find top/bottom lines that repeat on most pages.
+    - page_text_lines: list of page->list of lines
+    - top_k/bottom_k: how many first/last lines to check
+    - min_repeat: fraction threshold (e.g., 0.6 => on ≥60% of pages)
+    """
+    if not page_text_lines:
+        return HeaderFooter([], [])
+
+    total_pages = len(page_text_lines)
+    top_candidates: Dict[str, int] = {}
+    bottom_candidates: Dict[str, int] = {}
+
+    for lines in page_text_lines:
+        if not lines:
+            continue
+        top = [normalize_line(x) for x in lines[:top_k] if x.strip()]
+        bot = [normalize_line(x) for x in lines[-bottom_k:] if x.strip()]
+        for t in top:
+            top_candidates[t] = top_candidates.get(t, 0) + 1
+        for b in bot:
+            bottom_candidates[b] = bottom_candidates.get(b, 0) + 1
+
+    header = [k for k, v in top_candidates.items() if v / total_pages >= min_repeat]
+    footer = [k for k, v in bottom_candidates.items() if v / total_pages >= min_repeat]
+    return HeaderFooter(header, footer)
