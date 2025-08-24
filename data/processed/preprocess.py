@@ -50,3 +50,29 @@ except Exception:
     Image = None
 
 TOKEN_PER_CHAR = 1.0 / 4.0  # rough token estimate
+
+
+def estimate_tokens(text: str) -> int:
+    return max(1, int(len(text) * TOKEN_PER_CHAR))
+
+
+def sha256_of_file(path: Path) -> str:
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for chunk in iter(lambda: f.read(8192), b''):
+            h.update(chunk)
+    return h.hexdigest()
+
+
+def infer_year_from_path(path: Path) -> Optional[int]:
+    m = re.search(r"(20\d{2})", str(path))
+    if m:
+        try:
+            return int(m.group(1))
+        except Exception:
+            return None
+    return None
+
+
+def normalize_line(s: str) -> str:
+    return re.sub(r"\s+", " ", s.strip())
