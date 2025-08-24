@@ -113,3 +113,82 @@ def detect_repeating_header_footer(
     header = [k for k, v in top_candidates.items() if v / total_pages >= min_repeat]
     footer = [k for k, v in bottom_candidates.items() if v / total_pages >= min_repeat]
     return HeaderFooter(header, footer)
+
+
+@dataclasses.dataclass
+class PageContent:
+    page_num: int  # 1-based
+    text: str
+    blocks: List[dict]
+    tables_text: str
+
+
+FONT_BOLD_HINTS = {"Bold", "Semibold", "Demi", "Black"}
+
+
+def block_is_heading(block: dict) -> bool:
+    """Heading if avg font size is large or any span looks bold."""
+    spans = []
+    for line in block.get('lines', []):
+        spans.extend(line.get('spans', []))
+    if not spans:
+        return False
+    sizes = [s.get('size', 0) for s in spans if 'size' in s]
+    fonts = [s.get('font', '') for s in spans]
+    avg_size = sum(sizes) / max(1, len(sizes))
+    is_bold = any(any(b in f for b in FONT_BOLD_HINTS) for f in fonts)
+    return is_bold or avg_size >= 12.5
+
+
+def extract_tables_with_pdfplumber(pdf_path: Path) -> Dict[int, str]:
+    """Return per-page merged table text (TSV-like), if available."""
+    if pdfplumber is None:
+        return {}
+    tables: Dict[int, str] = {}
+    try:
+        with pdfplumber.open(str(pdf_path)) as pdf:
+            for i, page in enumerate(pdf.pages, start=1):
+                try:
+                    tbs = page.extract_tables() or []
+                    texts = []
+                    for tb in tbs:
+                        rows = ["\t".join([c if c is not None else "" for c in row]) for row in tb]
+                        if rows:
+                            texts.append("\n".join(rows))
+                    if texts:
+                        tables[i] = "\n\n".join(texts)
+                except Exception:
+                    continue
+    except Exception:
+        return {}
+    return tables
+
+
+def ocr_pixmap_to_text(pix) -> str:
+    if pytesseract is None or Image is None:
+        return ""
+    try:
+        img_bytes = pix.tobytes("png")
+        img = Image.open(io.BytesIO(img_bytes))
+        return pytesseract.image_to_string(img)
+    except Exception:
+        return ""
+
+
+def extract_page_content(doc, page_index: int, tables_map: Dict[int, str]) -> PageContent:
+    page = doc.load_page(page_index)
+    page_num = page_index + 1
+
+    page_dict = page.get_text("dict")
+    blocks = [b for b in page_dict.get('blocks', []) if b.get('type', 0) == 0]
+
+    text = page.get_text("text") or ""
+    text_norm = re.sub(r"\s+", " ", text).strip()
+    if len(text_norm) < 30:
+        pix = page.get_pixmap(matrix=fitz.Matrix(2, 2))
+        ocr_text = ocr_pixmap_to_text(pix)
+        if len(ocr_text.strip()) > len(text_norm):
+            text = ocr_text
+
+    tables_text = tables_map.get(page_num, "")
+    return PageContent(page_num=page_num, text=text, blocks=blocks, tables_text=tables_text)
