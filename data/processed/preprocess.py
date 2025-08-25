@@ -1,20 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 """
-Step 3: PDF Preprocessing & Chunking Pipeline (English, marker-free)
-
-This script:
-- Extracts text and layout blocks with PyMuPDF (font size, bold hints)
-- Detects & removes repeating headers/footers across pages
-- Falls back to OCR for image-heavy/low-text pages (if pytesseract is available)
-- Extracts table text with pdfplumber (if installed) and merges inline WITHOUT tags
-- Infers a basic section path from heading-like blocks (size/bold heuristics)
-- Splits text into semantic chunks with overlap
-- Emits JSONL with rich metadata per chunk (no extra markers in the text)
+PDF Preprocessing & Chunking (marker-free)
+- Scans data/raw/<YEAR>/ directories, each containing PDFs
+- Processes all PDFs per year and writes data/processed/<YEAR>/chunks_<YEAR>.jsonl
+- No argparse: configuration is set in constants below
 """
 
 from __future__ import annotations
-import argparse
 import dataclasses
 import hashlib
 import io
@@ -24,32 +17,41 @@ import sys
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-# Required
+# =============================
+# Configuration (edit as needed)
+# =============================
+RAW_ROOT = Path("data/raw")
+PROCESSED_ROOT = Path("data/processed")
+MIN_CHUNK_CHARS = 800
+MAX_CHUNK_CHARS = 1200
+OVERLAP = 180
+YEAR_DIR_PATTERN = re.compile(r"^(20\d{2})$")  # matches e.g. 2022, 2023, 2024
+
+# ===============
+# Dependencies
+# ===============
 try:
     import fitz  # PyMuPDF
 except Exception:
     print("PyMuPDF (fitz) is required: pip install pymupdf", file=sys.stderr)
     raise
 
-# Optional
 try:
-    import pdfplumber  # table extraction
+    import pdfplumber  # optional: table extraction
 except Exception:
     pdfplumber = None
 
 try:
-    import camelot  # advanced table extraction (not used by default)
-except Exception:
-    camelot = None
-
-try:
-    import pytesseract  # OCR
+    import pytesseract  # optional: OCR
     from PIL import Image
 except Exception:
     pytesseract = None
     Image = None
 
-TOKEN_PER_CHAR = 1.0 / 4.0  # rough token estimate
+# ===============
+# Helpers
+# ===============
+TOKEN_PER_CHAR = 1.0 / 4.0  # rough estimate
 
 
 def estimate_tokens(text: str) -> int:
@@ -77,22 +79,17 @@ def infer_year_from_path(path: Path) -> Optional[int]:
 def normalize_line(s: str) -> str:
     return re.sub(r"\s+", " ", s.strip())
 
-
+# ===============
+# Header/Footer detection
+# ===============
 @dataclasses.dataclass
 class HeaderFooter:
     header_lines: List[str]
     footer_lines: List[str]
 
 
-def detect_repeating_header_footer(
-    page_text_lines: List[List[str]], top_k: int = 2, bottom_k: int = 2, min_repeat: float = 0.6
-) -> HeaderFooter:
-    """
-    Find top/bottom lines that repeat on most pages.
-    - page_text_lines: list of page->list of lines
-    - top_k/bottom_k: how many first/last lines to check
-    - min_repeat: fraction threshold (e.g., 0.6 => on ≥60% of pages)
-    """
+def detect_repeating_header_footer(page_text_lines: List[List[str]], top_k: int = 2, bottom_k: int = 2,
+                                   min_repeat: float = 0.6) -> HeaderFooter:
     if not page_text_lines:
         return HeaderFooter([], [])
 
@@ -114,7 +111,9 @@ def detect_repeating_header_footer(
     footer = [k for k, v in bottom_candidates.items() if v / total_pages >= min_repeat]
     return HeaderFooter(header, footer)
 
-
+# ===============
+# Page extraction + OCR + tables
+# ===============
 @dataclasses.dataclass
 class PageContent:
     page_num: int  # 1-based
@@ -127,7 +126,6 @@ FONT_BOLD_HINTS = {"Bold", "Semibold", "Demi", "Black"}
 
 
 def block_is_heading(block: dict) -> bool:
-    """Heading if avg font size is large or any span looks bold."""
     spans = []
     for line in block.get('lines', []):
         spans.extend(line.get('spans', []))
@@ -141,7 +139,6 @@ def block_is_heading(block: dict) -> bool:
 
 
 def extract_tables_with_pdfplumber(pdf_path: Path) -> Dict[int, str]:
-    """Return per-page merged table text (TSV-like), if available."""
     if pdfplumber is None:
         return {}
     tables: Dict[int, str] = {}
@@ -152,7 +149,7 @@ def extract_tables_with_pdfplumber(pdf_path: Path) -> Dict[int, str]:
                     tbs = page.extract_tables() or []
                     texts = []
                     for tb in tbs:
-                        rows = ["\t".join([c if c is not None else "" for c in row]) for row in tb]
+                        rows = ["\t".join([(c or "") for c in row]) for row in tb]
                         if rows:
                             texts.append("\n".join(rows))
                     if texts:
@@ -193,7 +190,9 @@ def extract_page_content(doc, page_index: int, tables_map: Dict[int, str]) -> Pa
     tables_text = tables_map.get(page_num, "")
     return PageContent(page_num=page_num, text=text, blocks=blocks, tables_text=tables_text)
 
-
+# ===============
+# Section paths + chunking
+# ===============
 @dataclasses.dataclass
 class Chunk:
     id: str
@@ -209,10 +208,6 @@ class Chunk:
 
 
 def build_section_paths(page_contents: List[PageContent]) -> List[Tuple[str, int, int, str]]:
-    """
-    Collect section path candidates from heading-like blocks.
-    Returns: list of tuples (section_path, page_num, block_index, block_text)
-    """
     paths: List[Tuple[str, int, int, str]] = []
     current_path: List[str] = []
     for pc in page_contents:
@@ -233,7 +228,6 @@ def build_section_paths(page_contents: List[PageContent]) -> List[Tuple[str, int
 
 
 def split_text_with_overlap(text: str, min_chars: int, max_chars: int, overlap: int) -> List[str]:
-    """Split by sentence boundaries when possible; hard-split with overlap otherwise."""
     text = text.strip()
     if not text:
         return []
@@ -250,7 +244,6 @@ def split_text_with_overlap(text: str, min_chars: int, max_chars: int, overlap: 
                 carry = buf[-overlap:] if overlap > 0 and len(buf) > overlap else ""
                 buf = (carry + " " + sent).strip()
             else:
-                # handle very long single sentences
                 while len(buf + " " + sent) > max_chars:
                     part = (buf + " " + sent)[:max_chars]
                     chunks.append(part.strip())
@@ -263,20 +256,11 @@ def split_text_with_overlap(text: str, min_chars: int, max_chars: int, overlap: 
     return [c.strip() for c in chunks if c.strip()]
 
 
-def chunk_document(
-    doc_id: str,
-    year: Optional[int],
-    page_contents: List[PageContent],
-    sha256sum: str,
-    source_path: str,
-    min_chars: int,
-    max_chars: int,
-    overlap: int
-) -> List[Chunk]:
-    # Section paths
+def chunk_document(doc_id: str, year: Optional[int], page_contents: List[PageContent],
+                   sha256sum: str, source_path: str,
+                   min_chars: int, max_chars: int, overlap: int) -> List[Chunk]:
     paths = build_section_paths(page_contents)
 
-    # Merge page text; include tables inline; NO labels/markers
     page_texts: List[Tuple[int, str]] = []
     page_lines_for_header: List[List[str]] = []
     for pc in page_contents:
@@ -302,9 +286,8 @@ def chunk_document(
         out = re.sub(r"\n{3,}", "\n\n", out)
         return out.strip()
 
-    # Concatenate pages with blank-line separation (NO page markers)
     all_text_parts = []
-    for _, txt in page_texts:
+    for (_, txt) in page_texts:
         cleaned = clean_hf(txt)
         if cleaned:
             all_text_parts.append(cleaned)
@@ -315,8 +298,7 @@ def chunk_document(
 
     raw_chunks = split_text_with_overlap(full_text, min_chars, max_chars, overlap)
 
-    # Assign best-effort section_path per chunk (last heading seen inside the chunk)
-    sections_sorted = sorted(paths, key=lambda x: (x[1], x[2]))  # (section_path, page, block_idx, title)
+    sections_sorted = sorted(paths, key=lambda x: (x[1], x[2]))
 
     def infer_section_for_chunk(ch_text: str) -> str:
         best = ""
@@ -341,3 +323,77 @@ def chunk_document(
             sha256=sha256sum,
         ))
     return chunks
+
+# ===============
+# Directory walking & per-year JSONL writing (NO argparse)
+# ===============
+
+def process_pdf(path: Path, min_chars: int, max_chars: int, overlap: int) -> List[Chunk]:
+    doc = fitz.open(str(path))
+    sha = sha256_of_file(path)
+    doc_id = re.sub(r"\W+", "_", path.stem)
+    year = infer_year_from_path(path)
+
+    tables_map = extract_tables_with_pdfplumber(path)
+
+    page_contents: List[PageContent] = []
+    for i in range(len(doc)):
+        page_contents.append(extract_page_content(doc, i, tables_map))
+
+    return chunk_document(
+        doc_id=doc_id,
+        year=year,
+        page_contents=page_contents,
+        sha256sum=sha,
+        source_path=str(path),
+        min_chars=min_chars,
+        max_chars=max_chars,
+        overlap=overlap,
+    )
+
+
+def write_jsonl(chunks: List[Chunk], out_path: Path) -> None:
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(out_path, 'w', encoding='utf-8') as f:
+        for ch in chunks:
+            f.write(json.dumps(dataclasses.asdict(ch), ensure_ascii=False) + "\n")
+
+
+def main() -> None:
+    if not RAW_ROOT.exists():
+        print(f"RAW_ROOT does not exist: {RAW_ROOT}")
+        sys.exit(1)
+
+    year_dirs = [p for p in RAW_ROOT.iterdir() if p.is_dir() and YEAR_DIR_PATTERN.match(p.name)]
+    year_dirs.sort(key=lambda p: p.name)
+
+    if not year_dirs:
+        print(f"No year directories under {RAW_ROOT}")
+        sys.exit(1)
+
+    for ydir in year_dirs:
+        year = int(ydir.name)
+        pdfs = sorted(ydir.rglob("*.pdf"))
+        if not pdfs:
+            print(f"[SKIP] {ydir} has no PDFs")
+            continue
+
+        all_chunks: List[Chunk] = []
+        print(f"\n=== Year {year} ===")
+        for p in pdfs:
+            try:
+                chs = process_pdf(p, MIN_CHUNK_CHARS, MAX_CHUNK_CHARS, OVERLAP)
+                all_chunks.extend(chs)
+                print(f"  + {len(chs):4d} chunks from {p.name}")
+            except Exception as e:
+                print(f"  [ERROR] {p}: {e}", file=sys.stderr)
+
+        out_dir = PROCESSED_ROOT / str(year)
+        out_dir.mkdir(parents=True, exist_ok=True)
+        out_path = out_dir / f"chunks_{year}.jsonl"
+        write_jsonl(all_chunks, out_path)
+        print(f"[OK] {year}: wrote {len(all_chunks)} chunks → {out_path}")
+
+
+if __name__ == '__main__':
+    main()
