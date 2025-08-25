@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 """
 PDF Preprocessing & Chunking (marker-free)
-- Scans data/raw/<YEAR>/ directories, each containing PDFs
-- Processes all PDFs per year and writes data/processed/<YEAR>/chunks_<YEAR>.jsonl
-- No argparse: configuration is set in constants below
+- Walks data/raw/<YEAR>/ directories (e.g., 2022, 2023, 2024)
+- For each PDF, writes its OWN JSONL under data/processed/<YEAR>/chunks_<DOCID>.jsonl
+- No argparse; configuration is defined as constants below
 """
 
 from __future__ import annotations
@@ -18,14 +18,14 @@ from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
 # =============================
-# Configuration (edit as needed)
+# Configuration
 # =============================
 RAW_ROOT = Path("data/raw")
 PROCESSED_ROOT = Path("data/processed")
 MIN_CHUNK_CHARS = 800
 MAX_CHUNK_CHARS = 1200
 OVERLAP = 180
-YEAR_DIR_PATTERN = re.compile(r"^(20\d{2})$")  # matches e.g. 2022, 2023, 2024
+YEAR_DIR_PATTERN = re.compile(r"^(20\d{2})$")  # e.g., 2022, 2023, 2024
 
 # ===============
 # Dependencies
@@ -51,7 +51,7 @@ except Exception:
 # ===============
 # Helpers
 # ===============
-TOKEN_PER_CHAR = 1.0 / 4.0  # rough estimate
+TOKEN_PER_CHAR = 1.0 / 4.0  # rough token estimate
 
 
 def estimate_tokens(text: str) -> int:
@@ -78,6 +78,12 @@ def infer_year_from_path(path: Path) -> Optional[int]:
 
 def normalize_line(s: str) -> str:
     return re.sub(r"\s+", " ", s.strip())
+
+
+def sanitize_name(s: str) -> str:
+    """Make a filesystem- and URL-friendly identifier from a filename stem."""
+    s = re.sub(r"[^A-Za-z0-9_.-]+", "_", s)
+    return s.strip("_").lower()
 
 # ===============
 # Header/Footer detection
@@ -325,13 +331,13 @@ def chunk_document(doc_id: str, year: Optional[int], page_contents: List[PageCon
     return chunks
 
 # ===============
-# Directory walking & per-year JSONL writing (NO argparse)
+# Directory walking: per-PDF JSONL (NO argparse)
 # ===============
 
 def process_pdf(path: Path, min_chars: int, max_chars: int, overlap: int) -> List[Chunk]:
     doc = fitz.open(str(path))
     sha = sha256_of_file(path)
-    doc_id = re.sub(r"\W+", "_", path.stem)
+    doc_id = sanitize_name(path.stem)
     year = infer_year_from_path(path)
 
     tables_map = extract_tables_with_pdfplumber(path)
@@ -373,26 +379,24 @@ def main() -> None:
 
     for ydir in year_dirs:
         year = int(ydir.name)
-        pdfs = sorted(ydir.rglob("*.pdf"))
+        pdfs = sorted(ydir.glob("*.pdf"))
         if not pdfs:
             print(f"[SKIP] {ydir} has no PDFs")
             continue
 
-        all_chunks: List[Chunk] = []
+        out_dir = PROCESSED_ROOT / str(year)
+        out_dir.mkdir(parents=True, exist_ok=True)
+
         print(f"\n=== Year {year} ===")
         for p in pdfs:
             try:
-                chs = process_pdf(p, MIN_CHUNK_CHARS, MAX_CHUNK_CHARS, OVERLAP)
-                all_chunks.extend(chs)
-                print(f"  + {len(chs):4d} chunks from {p.name}")
+                chunks = process_pdf(p, MIN_CHUNK_CHARS, MAX_CHUNK_CHARS, OVERLAP)
+                doc_id = sanitize_name(p.stem)
+                out_path = out_dir / f"chunks_{doc_id}.jsonl"
+                write_jsonl(chunks, out_path)
+                print(f"  [OK] {p.name} → {out_path} ({len(chunks)} chunks)")
             except Exception as e:
                 print(f"  [ERROR] {p}: {e}", file=sys.stderr)
-
-        out_dir = PROCESSED_ROOT / str(year)
-        out_dir.mkdir(parents=True, exist_ok=True)
-        out_path = out_dir / f"chunks_{year}.jsonl"
-        write_jsonl(all_chunks, out_path)
-        print(f"[OK] {year}: wrote {len(all_chunks)} chunks → {out_path}")
 
 
 if __name__ == '__main__':
