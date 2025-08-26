@@ -29,6 +29,9 @@ class Settings(BaseModel):
     context_k: int = Field(description="Number of documents to use as context")
     context_char_limit: int = Field(description="Character limit per context chunk")
     
+    # System prompt settings
+    system_prompt: str = Field(description="System prompt for the LLM")
+    
     class Config:
         arbitrary_types_allowed = True
 
@@ -55,6 +58,25 @@ class Settings(BaseModel):
         context_k = int(os.getenv("CONTEXT_K", "6"))
         context_char_limit = int(os.getenv("CONTEXT_CHAR_LIMIT", "1200"))
         
+        # Default system prompt for NTT Data sustainability reports
+        default_system_prompt = (
+            "You are an expert analyst specializing in NTT Data Solutions' sustainability reports and case books. "
+            "Your role is to provide accurate, detailed answers about NTT Data's sustainability initiatives, "
+            "environmental impact, social responsibility, governance practices, and business case studies.\n\n"
+            
+            "IMPORTANT GUIDELINES:\n"
+            "- Answer ONLY in Turkish\n"
+            "- Use ONLY the provided context from NTT Data documents\n"
+            "- Always cite sources as [doc_id year p.start-p.end] at the end of relevant information\n"
+            "- If the question is not related to NTT Data's sustainability, environmental, social, or governance topics, "
+            "politely decline and explain that you can only answer questions about NTT Data's sustainability reports\n"
+            "- If information is not in the provided context, clearly state that you don't have that information\n"
+            "- Focus on factual information from the documents, avoid speculation\n"
+            "- When discussing metrics or data, be precise and include the source year"
+        )
+        
+        system_prompt = os.getenv("SYSTEM_PROMPT", default_system_prompt)
+        
         return cls(
             chroma_dir=chroma_dir,
             collection=collection,
@@ -64,6 +86,7 @@ class Settings(BaseModel):
             retrieval_k=retrieval_k,
             context_k=context_k,
             context_char_limit=context_char_limit,
+            system_prompt=system_prompt,
         )
 
 
