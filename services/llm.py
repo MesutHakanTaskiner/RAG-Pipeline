@@ -67,11 +67,7 @@ class LLMService:
         Returns:
             Tuple of (system_prompt, user_prompt)
         """
-        system_prompt = (
-            "You are a careful analyst. Answer in Turkish, using only the provided context. "
-            "Cite sources as [doc_id year p.start-p.end] at the end. If not in context, say you don't know."
-        )
-        
-        user_prompt = f"Context:\n{context}\n\nQuestion: {question}\n\nAnswer in Turkish."
+        system_prompt = self.settings.system_prompt
+        user_prompt = f"Context:\n{context}\n\nQuestion: {question}\n\nAnswer in Turkish:"
         
         return system_prompt, user_prompt
