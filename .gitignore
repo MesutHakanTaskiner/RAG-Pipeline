@@ -136,6 +136,11 @@ venv.bak/
 .spyderproject
 .spyproject
 
+.chroma/
+data/processed/2022
+data/processed/2023
+data/processed/2024
+
 # Rope project settings
 .ropeproject
 
