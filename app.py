@@ -41,7 +41,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="RAG API (LangChain + Chroma + OpenAI)",
         description="A modular RAG system with Pydantic validation",
-        version="2.0.0"
+        version="1.0.0"
     )
     
     # Include routes
