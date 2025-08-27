@@ -11,7 +11,6 @@ from models.schemas import AskRequest, AskResponse, HealthResponse, Source
 from services.vector_store import VectorStoreService, create_year_filter
 from services.llm import LLMService
 from utils.text_processing import format_context_block
-from utils.question_validator import validate_question_relevance, QuestionValidator
 from config.settings import Settings
 
 
@@ -62,16 +61,6 @@ class RAGRoutes:
         start_time = time.time()
         
         try:
-            # Validate question relevance
-            is_relevant, validation_message = validate_question_relevance(request.question)
-            if not is_relevant:
-                # Return a response explaining the limitation
-                return AskResponse(
-                    answer=f"{validation_message}\n\n{QuestionValidator.get_relevance_message()}",
-                    sources=[],
-                    latency_ms=int((time.time() - start_time) * 1000)
-                )
-            
             # Determine retrieval count
             k = request.top_k or self.settings.retrieval_k
             
