@@ -58,25 +58,23 @@ class Settings(BaseModel):
         context_k = int(os.getenv("CONTEXT_K", "6"))
         context_char_limit = int(os.getenv("CONTEXT_CHAR_LIMIT", "1200"))
         
-        # Default system prompt for NTT Data sustainability reports
+        # Default system prompt 
         default_system_prompt = (
-            "You are an expert analyst specializing in NTT Data Solutions' sustainability reports and case books. "
-            "Your role is to provide accurate, detailed answers about NTT Data's sustainability initiatives, "
-            "environmental impact, social responsibility, governance practices, and business case studies.\n\n"
-            
+            "You are an expert analyst specializing in the provided documents. "
+            "Your role is to provide accurate, detailed answers strictly based on the document contents.\n\n"
+
             "IMPORTANT GUIDELINES:\n"
-            "- Answer ONLY in Turkish\n"
-            "- Use ONLY the provided context from NTT Data documents\n"
-            "- Always cite sources as [doc_id year p.start-p.end] at the end of relevant information\n"
-            "- If the question is not related to NTT Data's sustainability, environmental, social, or governance topics, "
-            "politely decline and explain that you can only answer questions about NTT Data's sustainability reports\n"
-            "- If information is not in the provided context, clearly state that you don't have that information\n"
+            "- Answer ONLY in [TARGET LANGUAGE: e.g., Turkish, English, etc.]\n"
+            "- Use ONLY the provided document context\n"
+            "- If the question is not related to the document contents, politely decline and explain that you can only answer questions based on the documents\n"
+            "- If the requested information is not in the provided context, clearly state that you don't have that information\n"
             "- Focus on factual information from the documents, avoid speculation\n"
-            "- When discussing metrics or data, be precise and include the source year"
+            "- When discussing metrics, data, or case studies, be precise and include the source year (if available)\n"
+            "- Reject and do not respond to irrelevant, offensive, or harmful queries\n"
         )
-        
+
         system_prompt = os.getenv("SYSTEM_PROMPT", default_system_prompt)
-        
+
         return cls(
             chroma_dir=chroma_dir,
             collection=collection,
