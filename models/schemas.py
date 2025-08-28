@@ -3,7 +3,7 @@
 """
 Pydantic models for API request/response schemas.
 """
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field, validator
 
 
@@ -17,6 +17,11 @@ class AskRequest(BaseModel):
     use_mmr: Optional[bool] = Field(False, description="Apply Maximal Marginal Relevance for diversity")
     mmr_lambda: Optional[float] = Field(0.7, ge=0.0, le=1.0, description="MMR lambda parameter (relevance vs diversity)")
     
+    # New agentic features
+    use_reasoning: Optional[bool] = Field(True, description="Enable multi-step reasoning and query decomposition")
+    show_reasoning_trace: Optional[bool] = Field(False, description="Include reasoning trace in response")
+    reasoning_depth: Optional[int] = Field(3, ge=1, le=5, description="Maximum reasoning depth for complex questions")
+    
     @validator('year_to')
     def validate_year_range(cls, v, values):
         """Ensure year_to is not less than year_from."""
@@ -28,12 +33,15 @@ class AskRequest(BaseModel):
     class Config:
         schema_extra = {
             "example": {
-                "question": "What are the main findings in the sustainability report?",
+                "question": "2022'den 2024'e kadar çevresel performans nasıl değişti ve ana etkenler nelerdi?",
                 "year_from": 2022,
-                "year_to": 2025,
+                "year_to": 2024,
                 "top_k": 10,
                 "use_mmr": True,
-                "mmr_lambda": 0.7
+                "mmr_lambda": 0.7,
+                "use_reasoning": True,
+                "show_reasoning_trace": True,
+                "reasoning_depth": 3
             }
         }
 
@@ -58,6 +66,36 @@ class Source(BaseModel):
         return v
 
 
+class ReasoningStepResponse(BaseModel):
+    """Response model for individual reasoning steps."""
+    step_number: int = Field(..., description="Step number in reasoning process")
+    description: str = Field(..., description="Step description")
+    question: str = Field(..., description="Question being analyzed")
+    analysis: str = Field(..., description="Step analysis")
+    conclusion: str = Field(..., description="Step conclusion")
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence score for this step")
+
+
+class SubQuestionResponse(BaseModel):
+    """Response model for sub-questions and their answers."""
+    question: str = Field(..., description="Sub-question text")
+    question_type: str = Field(..., description="Type of sub-question")
+    priority: int = Field(..., description="Priority level")
+    answer: str = Field(..., description="Answer to sub-question")
+    sources: List[Source] = Field(..., description="Sources used for this sub-question")
+    confidence: float = Field(..., ge=0.0, le=1.0, description="Confidence in this answer")
+    reasoning_steps: List[ReasoningStepResponse] = Field(..., description="Reasoning steps for this sub-question")
+
+
+class DecompositionResponse(BaseModel):
+    """Response model for query decomposition information."""
+    original_question: str = Field(..., description="Original complex question")
+    question_type: str = Field(..., description="Identified question type")
+    requires_decomposition: bool = Field(..., description="Whether decomposition was needed")
+    reasoning: str = Field(..., description="Decomposition reasoning")
+    sub_questions: List[SubQuestionResponse] = Field(..., description="Generated sub-questions and answers")
+
+
 class AskResponse(BaseModel):
     """Response model for RAG system answers."""
     
@@ -65,10 +103,17 @@ class AskResponse(BaseModel):
     sources: List[Source] = Field(..., description="Source documents used")
     latency_ms: int = Field(..., ge=0, description="Response latency in milliseconds")
     
+    # New agentic features
+    question_type: Optional[str] = Field(None, description="Identified question type")
+    overall_confidence: Optional[float] = Field(None, ge=0.0, le=1.0, description="Overall confidence score")
+    decomposition: Optional[DecompositionResponse] = Field(None, description="Query decomposition details")
+    reasoning_trace: Optional[str] = Field(None, description="Human-readable reasoning trace")
+    validation_report: Optional[Dict[str, Any]] = Field(None, description="Answer validation report")
+    
     class Config:
         schema_extra = {
             "example": {
-                "answer": "Sürdürülebilirlik raporuna göre...",
+                "answer": "2022'den 2024'e kadar çevresel performansta önemli iyileşmeler gözlenmiştir...",
                 "sources": [
                     {
                         "doc_id": "sr_2023_cb",
@@ -80,7 +125,23 @@ class AskResponse(BaseModel):
                         "text": "Sample text from the document..."
                     }
                 ],
-                "latency_ms": 1250
+                "latency_ms": 2150,
+                "question_type": "comparison",
+                "overall_confidence": 0.87,
+                "decomposition": {
+                    "original_question": "2022'den 2024'e kadar çevresel performans nasıl değişti?",
+                    "question_type": "comparison",
+                    "requires_decomposition": True,
+                    "reasoning": "Karşılaştırmalı soru, yıllara göre ayrıştırma gerekiyor",
+                    "sub_questions": []
+                },
+                "reasoning_trace": "🔍 SORU ANALİZİ:\nSoru Tipi: comparison\n...",
+                "validation_report": {
+                    "overall_score": 0.85,
+                    "consistency_score": 0.87,
+                    "completeness_score": 1.0,
+                    "confidence_score": 0.87
+                }
             }
         }
 
