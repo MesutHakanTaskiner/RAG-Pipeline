@@ -23,7 +23,6 @@ ENV (.env) keys (examples):
     CONTEXT_CHAR_LIMIT=1200       # per chunk char cap in prompt
 
 Run:
-    pip install -U fastapi uvicorn python-dotenv langchain-openai langchain-community chromadb langchain-core
     uvicorn app:app --reload --port 8080
 """
 from fastapi import FastAPI
