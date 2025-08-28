@@ -4,7 +4,7 @@
 Pydantic models for API request/response schemas.
 """
 from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator, ConfigDict
 
 
 class AskRequest(BaseModel):
@@ -22,16 +22,17 @@ class AskRequest(BaseModel):
     show_reasoning_trace: Optional[bool] = Field(False, description="Include reasoning trace in response")
     reasoning_depth: Optional[int] = Field(3, ge=1, le=5, description="Maximum reasoning depth for complex questions")
     
-    @validator('year_to')
-    def validate_year_range(cls, v, values):
+    @field_validator('year_to')
+    @classmethod
+    def validate_year_range(cls, v, info):
         """Ensure year_to is not less than year_from."""
-        if v is not None and 'year_from' in values and values['year_from'] is not None:
-            if v < values['year_from']:
+        if v is not None and info.data.get('year_from') is not None:
+            if v < info.data['year_from']:
                 raise ValueError('year_to must be greater than or equal to year_from')
         return v
     
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "question": "2022'den 2024'e kadar çevresel performans nasıl değişti ve ana etkenler nelerdi?",
                 "year_from": 2022,
@@ -44,6 +45,7 @@ class AskRequest(BaseModel):
                 "reasoning_depth": 3
             }
         }
+    )
 
 
 class Source(BaseModel):
@@ -57,11 +59,12 @@ class Source(BaseModel):
     section_path: Optional[str] = Field(None, description="Section path in document")
     text: str = Field(..., description="Source text content")
     
-    @validator('page_end')
-    def validate_page_range(cls, v, values):
+    @field_validator('page_end')
+    @classmethod
+    def validate_page_range(cls, v, info):
         """Ensure page_end is not less than page_start."""
-        if v is not None and 'page_start' in values and values['page_start'] is not None:
-            if v < values['page_start']:
+        if v is not None and info.data.get('page_start') is not None:
+            if v < info.data['page_start']:
                 raise ValueError('page_end must be greater than or equal to page_start')
         return v
 
@@ -110,8 +113,8 @@ class AskResponse(BaseModel):
     reasoning_trace: Optional[str] = Field(None, description="Human-readable reasoning trace")
     validation_report: Optional[Dict[str, Any]] = Field(None, description="Answer validation report")
     
-    class Config:
-        schema_extra = {
+    model_config = ConfigDict(
+        json_schema_extra={
             "example": {
                 "answer": "2022'den 2024'e kadar çevresel performansta önemli iyileşmeler gözlenmiştir...",
                 "sources": [
@@ -144,6 +147,7 @@ class AskResponse(BaseModel):
                 }
             }
         }
+    )
 
 
 class HealthResponse(BaseModel):

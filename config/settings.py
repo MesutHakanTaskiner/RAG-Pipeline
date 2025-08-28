@@ -6,7 +6,7 @@ Configuration settings for the RAG application.
 import os
 from pathlib import Path
 from typing import Optional
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 from dotenv import load_dotenv
 
 
@@ -32,8 +32,7 @@ class Settings(BaseModel):
     # System prompt settings
     system_prompt: str = Field(description="System prompt for the LLM")
     
-    class Config:
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(arbitrary_types_allowed=True)
 
     @classmethod
     def from_env(cls, env_file: str = ".env") -> "Settings":
