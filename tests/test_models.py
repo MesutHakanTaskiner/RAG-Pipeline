@@ -17,15 +17,13 @@ def test_ask_request_valid():
         question="Test question?",
         year_from=2020,
         year_to=2023,
-        use_mmr=True,
-        mmr_lambda=0.7
+        use_mmr=True
     )
     
     assert request.question == "Test question?"
     assert request.year_from == 2020
     assert request.year_to == 2023
     assert request.use_mmr is True
-    assert request.mmr_lambda == 0.7
 
 
 def test_ask_request_validation_errors():
@@ -41,10 +39,6 @@ def test_ask_request_validation_errors():
     # Test invalid year range
     with pytest.raises(ValidationError):
         AskRequest(question="Test?", year_from=2025, year_to=2020)
-    
-    # Test invalid mmr_lambda
-    with pytest.raises(ValidationError):
-        AskRequest(question="Test?", mmr_lambda=1.5)
 
 
 def test_source_model():
