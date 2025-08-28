@@ -14,6 +14,8 @@ class AskRequest(BaseModel):
     year_from: Optional[int] = Field(None, ge=2009, le=2026, description="Filter documents from this year")
     year_to: Optional[int] = Field(None, ge=2010, le=2026, description="Filter documents to this year")
     top_k: Optional[int] = Field(None, ge=1, le=50, description="Number of documents to retrieve")
+    use_mmr: Optional[bool] = Field(False, description="Apply Maximal Marginal Relevance for diversity")
+    mmr_lambda: Optional[float] = Field(0.7, ge=0.0, le=1.0, description="MMR lambda parameter (relevance vs diversity)")
     
     @validator('year_to')
     def validate_year_range(cls, v, values):
@@ -29,7 +31,9 @@ class AskRequest(BaseModel):
                 "question": "What are the main findings in the sustainability report?",
                 "year_from": 2022,
                 "year_to": 2025,
-                "top_k": 10
+                "top_k": 10,
+                "use_mmr": True,
+                "mmr_lambda": 0.7
             }
         }
 
