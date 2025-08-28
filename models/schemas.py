@@ -12,7 +12,7 @@ class AskRequest(BaseModel):
     
     question: str = Field(..., min_length=1, max_length=1000, description="The question to ask")
     year_from: Optional[int] = Field(None, ge=2009, le=2026, description="Filter documents from this year")
-    year_to: Optional[int] = Field(None, ge=2025, le=2026, description="Filter documents to this year")
+    year_to: Optional[int] = Field(None, ge=2010, le=2026, description="Filter documents to this year")
     top_k: Optional[int] = Field(None, ge=1, le=50, description="Number of documents to retrieve")
     
     @validator('year_to')
