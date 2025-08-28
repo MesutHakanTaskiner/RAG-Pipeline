@@ -117,8 +117,7 @@ class TestRAGRoutes:
         # Setup request
         request = AskRequest(
             question="What is AI?",
-            use_reasoning=False,
-            top_k=6
+            use_reasoning=False
         )
         
         # Mock the _process_simple_rag method
@@ -138,8 +137,7 @@ class TestRAGRoutes:
         # Setup request
         request = AskRequest(
             question="What is AI?",
-            use_reasoning=True,
-            top_k=6
+            use_reasoning=True
         )
         
         # Mock the _process_with_reasoning method
@@ -185,7 +183,7 @@ class TestRAGRoutes:
         mock_rag_routes.llm_service.generate_answer.return_value = "Generated answer"
 
         # Create request
-        request = AskRequest(question="What is AI?", top_k=6)
+        request = AskRequest(question="What is AI?")
 
         # Test processing - mock time at the start_time parameter level
         response = mock_rag_routes._process_simple_rag(request, 0)
