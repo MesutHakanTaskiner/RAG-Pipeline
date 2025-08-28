@@ -13,11 +13,9 @@ class AskRequest(BaseModel):
     question: str = Field(..., min_length=1, max_length=1000, description="The question to ask")
     year_from: Optional[int] = Field(None, ge=2009, le=2026, description="Filter documents from this year")
     year_to: Optional[int] = Field(None, le=2026, description="Filter documents to this year")
-    top_k: Optional[int] = Field(None, ge=6, le=50, description="Number of documents to retrieve")
     use_mmr: Optional[bool] = Field(False, description="Apply Maximal Marginal Relevance for diversity")
-    mmr_lambda: Optional[float] = Field(0.7, ge=0.0, le=1.0, description="MMR lambda parameter (relevance vs diversity)")
     
-    # New agentic features
+    # Agentic features
     use_reasoning: Optional[bool] = Field(True, description="Enable multi-step reasoning and query decomposition")
     show_reasoning_trace: Optional[bool] = Field(False, description="Include reasoning trace in response")
     reasoning_depth: Optional[int] = Field(3, ge=1, le=5, description="Maximum reasoning depth for complex questions")
@@ -37,11 +35,9 @@ class AskRequest(BaseModel):
                 "question": "2022'den 2024'e kadar çevresel performans nasıl değişti ve ana etkenler nelerdi?",
                 "year_from": 2022,
                 "year_to": 2024,
-                "top_k": 10,
-                "use_mmr": True,
-                "mmr_lambda": 0.7,
-                "use_reasoning": True,
-                "show_reasoning_trace": True,
+                "use_mmr": False,
+                "use_reasoning": False,
+                "show_reasoning_trace": False,
                 "reasoning_depth": 3
             }
         }
