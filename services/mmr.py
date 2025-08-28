@@ -64,14 +64,11 @@ class MMRService:
             Cosine similarity score (0-1)
         """
         # Normalize vectors
-        vec1_norm = vec1 / np.linalg.norm(vec1)
-        vec2_norm = vec2 / np.linalg.norm(vec2)
-        
-        # Calculate cosine similarity
-        similarity = np.dot(vec1_norm, vec2_norm)
-        
-        # Ensure similarity is in [0, 1] range
-        return max(0.0, min(1.0, float(similarity)))
+        n1 = np.linalg.norm(vec1)
+        n2 = np.linalg.norm(vec2)
+        if n1 == 0.0 or n2 == 0.0:
+            return 0.0
+        return float(np.dot(vec1 / n1, vec2 / n2))
     
     def _get_document_embeddings(self, documents: List[Document]) -> List[np.ndarray]:
         """
@@ -88,6 +85,25 @@ class MMRService:
         embeddings = embeddings_service.embed_documents(texts)
         return [np.array(emb) for emb in embeddings]
     
+    def _get_document_embeddings_cached(self, documents: List[Document]) -> List[np.ndarray]:
+        embs = [None] * len(documents)
+        to_embed, to_idx = [], []
+        for i, d in enumerate(documents):
+            e = d.metadata.get("_embedding")
+            if e is not None:
+                embs[i] = np.array(e, dtype=np.float32)
+            else:
+                to_embed.append(d.page_content)
+                to_idx.append(i)
+
+        if to_embed:
+            new_embs = self._get_embeddings().embed_documents(to_embed)
+            for j, i in enumerate(to_idx):
+                documents[i].metadata["_embedding"] = new_embs[j]  # kalıcılaştırmak istersen ingest’te yap
+                embs[i] = np.array(new_embs[j], dtype=np.float32)
+        return embs
+
+    
     def _get_query_embedding(self, query: str) -> np.ndarray:
         """
         Get embedding for a query string.
@@ -102,100 +118,91 @@ class MMRService:
         embedding = embeddings_service.embed_query(query)
         return np.array(embedding)
     
-    def apply_mmr(
-        self,
-        query: str,
-        documents_with_scores: List[Tuple[Document, float]],
-        k: int,
-        lambda_param: Optional[float] = None
-    ) -> List[Tuple[Document, float]]:
-        """
-        Apply MMR to re-rank documents for better relevance-diversity balance.
-        
-        Args:
-            query: Original search query
-            documents_with_scores: List of (Document, similarity_score) tuples
-            k: Number of documents to select
-            lambda_param: Override default lambda parameter
-            
-        Returns:
-            Re-ranked list of (Document, MMR_score) tuples
-        """
-        if not documents_with_scores:
+    def apply_mmr(self, query: str, documents_with_scores: List[Tuple[Document, float]],
+              k: int, lambda_param: Optional[float] = None,
+              unique_by: Optional[str] = "doc_id", max_per_doc: int = 1) -> List[Tuple[Document, float]]:
+
+        if not documents_with_scores or k <= 0:
             return []
-        
-        if k <= 0:
-            return []
-        
         if k >= len(documents_with_scores):
             return documents_with_scores
-        
-        # Use provided lambda or default
-        lambda_val = lambda_param if lambda_param is not None else self.lambda_param
-        
-        # Extract documents and original scores
-        documents = [doc for doc, _ in documents_with_scores]
-        original_scores = [score for _, score in documents_with_scores]
-        
-        # Get embeddings
-        query_embedding = self._get_query_embedding(query)
-        doc_embeddings = self._get_document_embeddings(documents)
-        
-        # Calculate query-document similarities
-        query_similarities = []
-        for doc_emb in doc_embeddings:
-            sim = self._cosine_similarity(query_embedding, doc_emb)
-            query_similarities.append(sim)
-        
-        # MMR selection algorithm
-        selected_indices = []
-        remaining_indices = list(range(len(documents)))
-        
-        # Select first document (highest query similarity)
-        if remaining_indices:
-            best_idx = max(remaining_indices, key=lambda i: query_similarities[i])
-            selected_indices.append(best_idx)
-            remaining_indices.remove(best_idx)
-        
-        # Select remaining documents using MMR
-        while len(selected_indices) < k and remaining_indices:
-            mmr_scores = []
-            
-            for i in remaining_indices:
-                # Relevance component: similarity to query
-                relevance = query_similarities[i]
-                
-                # Diversity component: max similarity to already selected docs
-                max_similarity = 0.0
-                for j in selected_indices:
-                    sim = self._cosine_similarity(doc_embeddings[i], doc_embeddings[j])
-                    max_similarity = max(max_similarity, sim)
-                
-                # MMR formula
-                mmr_score = lambda_val * relevance - (1 - lambda_val) * max_similarity
-                mmr_scores.append((i, mmr_score))
-            
-            # Select document with highest MMR score
-            best_idx, best_score = max(mmr_scores, key=lambda x: x[1])
-            selected_indices.append(best_idx)
-            remaining_indices.remove(best_idx)
-        
-        # Build result with MMR scores
-        result = []
-        for idx in selected_indices:
-            doc = documents[idx]
-            # Calculate final MMR score for this document
-            relevance = query_similarities[idx]
-            max_similarity = 0.0
-            for other_idx in selected_indices:
-                if other_idx != idx:
-                    sim = self._cosine_similarity(doc_embeddings[idx], doc_embeddings[other_idx])
-                    max_similarity = max(max_similarity, sim)
-            
-            mmr_score = lambda_val * relevance - (1 - lambda_val) * max_similarity
-            result.append((doc, float(mmr_score)))
-        
-        return result
+
+        lam = self.lambda_param if lambda_param is None else lambda_param
+        lam = max(0.0, min(1.0, lam))
+
+        docs = [d for d, _ in documents_with_scores]
+        q_emb = self._get_query_embedding(query)
+        d_embs = self._get_document_embeddings_cached(docs)
+
+        # q-d benzerlikleri (cosine)
+        q_sims = [self._cosine_similarity(q_emb, e) for e in d_embs]
+
+        selected_idx, remaining_idx = [], list(range(len(docs)))
+        # de-dup sayacı
+        per_doc_counter = {}
+
+        # ilk seçim
+        best = max(remaining_idx, key=lambda i: q_sims[i])
+        selected_idx.append(best)
+        remaining_idx.remove(best)
+        if unique_by:
+            key = docs[best].metadata.get(unique_by)
+            if key:
+                per_doc_counter[key] = 1
+
+        # kalan seçimler
+        while len(selected_idx) < k and remaining_idx:
+            candidates = []
+            for i in remaining_idx:
+                # de-dup kotası
+                if unique_by:
+                    key = docs[i].metadata.get(unique_by)
+                    if key and per_doc_counter.get(key, 0) >= max_per_doc:
+                        continue
+
+                rel = q_sims[i]
+                div = max(self._cosine_similarity(d_embs[i], d_embs[j]) for j in selected_idx) if selected_idx else 0.0
+                mmr_score = lam * rel - (1.0 - lam) * div
+                candidates.append((i, mmr_score))
+
+            if not candidates:
+                break
+            i_best, _ = max(candidates, key=lambda x: x[1])
+            selected_idx.append(i_best)
+            remaining_idx.remove(i_best)
+
+            if unique_by:
+                key = docs[i_best].metadata.get(unique_by)
+                if key:
+                    per_doc_counter[key] = per_doc_counter.get(key, 0) + 1
+
+        # eğer k’ya ulaşamadıysan, kalanlardan yüksek q_sims ile tamamla (de-dup’a saygı)
+        if len(selected_idx) < k:
+            for i in sorted(remaining_idx, key=lambda x: q_sims[x], reverse=True):
+                if unique_by:
+                    key = docs[i].metadata.get(unique_by)
+                    if key and per_doc_counter.get(key, 0) >= max_per_doc:
+                        continue
+                selected_idx.append(i)
+                if unique_by:
+                    per_doc_counter[key] = per_doc_counter.get(key, 0) + 1
+                if len(selected_idx) >= k:
+                    break
+
+        # çıktı: (doc, mmr_score)
+        out = []
+        for idx in selected_idx:
+            # nihai mmr puanını hesapla (isteğe bağlı; istersen q_sims dönebilirsin)
+            rel = q_sims[idx]
+            div = 0.0
+            for j in selected_idx:
+                if j == idx: 
+                    continue
+                div = max(div, self._cosine_similarity(d_embs[idx], d_embs[j]))
+            mmr_score = lam * rel - (1.0 - lam) * div
+            out.append((docs[idx], float(mmr_score)))
+        return out
+
     
     def apply_mmr_simple(
         self,

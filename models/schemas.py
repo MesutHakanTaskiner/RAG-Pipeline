@@ -12,8 +12,8 @@ class AskRequest(BaseModel):
     
     question: str = Field(..., min_length=1, max_length=1000, description="The question to ask")
     year_from: Optional[int] = Field(None, ge=2009, le=2026, description="Filter documents from this year")
-    year_to: Optional[int] = Field(None, ge=2010, le=2026, description="Filter documents to this year")
-    top_k: Optional[int] = Field(None, ge=1, le=50, description="Number of documents to retrieve")
+    year_to: Optional[int] = Field(None, le=2026, description="Filter documents to this year")
+    top_k: Optional[int] = Field(None, ge=6, le=50, description="Number of documents to retrieve")
     use_mmr: Optional[bool] = Field(False, description="Apply Maximal Marginal Relevance for diversity")
     mmr_lambda: Optional[float] = Field(0.7, ge=0.0, le=1.0, description="MMR lambda parameter (relevance vs diversity)")
     
