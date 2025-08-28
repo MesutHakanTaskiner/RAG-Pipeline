@@ -31,15 +31,15 @@ class MMRService:
         
         Args:
             settings: Application settings
-            lambda_param: Trade-off parameter between relevance and diversity (0-1)
-                         Higher values favor relevance, lower values favor diversity
+            lambda_param: Trade-off parameter between relevance and diversity (0-1).
+                          Higher values favor relevance, lower values favor diversity.
         """
         self.settings = settings
         self.lambda_param = lambda_param
         self._embeddings: Optional[OpenAIEmbeddings] = None
     
     def _get_embeddings(self) -> OpenAIEmbeddings:
-        """Get or create OpenAI embeddings instance."""
+        """Get or create an OpenAI embeddings instance."""
         if self._embeddings is None:
             if self.settings.embedding_dim:
                 self._embeddings = OpenAIEmbeddings(
@@ -86,6 +86,10 @@ class MMRService:
         return [np.array(emb) for emb in embeddings]
     
     def _get_document_embeddings_cached(self, documents: List[Document]) -> List[np.ndarray]:
+        """
+        Get embeddings for documents, using any cached embedding present in metadata.
+        If missing, embed and persist the result into document metadata for reuse.
+        """
         embs = [None] * len(documents)
         to_embed, to_idx = [], []
         for i, d in enumerate(documents):
@@ -99,14 +103,15 @@ class MMRService:
         if to_embed:
             new_embs = self._get_embeddings().embed_documents(to_embed)
             for j, i in enumerate(to_idx):
-                documents[i].metadata["_embedding"] = new_embs[j]  # kalıcılaştırmak istersen ingest’te yap
+                # If you want to persist permanently, do it at ingest time
+                documents[i].metadata["_embedding"] = new_embs[j]
                 embs[i] = np.array(new_embs[j], dtype=np.float32)
         return embs
 
     
     def _get_query_embedding(self, query: str) -> np.ndarray:
         """
-        Get embedding for a query string.
+        Get the embedding for a query string.
         
         Args:
             query: Query string
@@ -134,14 +139,14 @@ class MMRService:
         q_emb = self._get_query_embedding(query)
         d_embs = self._get_document_embeddings_cached(docs)
 
-        # q-d benzerlikleri (cosine)
+        # Query-to-document similarities (cosine)
         q_sims = [self._cosine_similarity(q_emb, e) for e in d_embs]
 
         selected_idx, remaining_idx = [], list(range(len(docs)))
-        # de-dup sayacı
+        # De-duplication counter
         per_doc_counter = {}
 
-        # ilk seçim
+        # First selection: pick the doc with highest query similarity
         best = max(remaining_idx, key=lambda i: q_sims[i])
         selected_idx.append(best)
         remaining_idx.remove(best)
@@ -150,11 +155,11 @@ class MMRService:
             if key:
                 per_doc_counter[key] = 1
 
-        # kalan seçimler
+        # Subsequent selections
         while len(selected_idx) < k and remaining_idx:
             candidates = []
             for i in remaining_idx:
-                # de-dup kotası
+                # De-duplication quota check
                 if unique_by:
                     key = docs[i].metadata.get(unique_by)
                     if key and per_doc_counter.get(key, 0) >= max_per_doc:
@@ -176,7 +181,7 @@ class MMRService:
                 if key:
                     per_doc_counter[key] = per_doc_counter.get(key, 0) + 1
 
-        # eğer k’ya ulaşamadıysan, kalanlardan yüksek q_sims ile tamamla (de-dup’a saygı)
+        # If we couldn't reach k, top off with highest q_sims from remaining (respecting de-dup)
         if len(selected_idx) < k:
             for i in sorted(remaining_idx, key=lambda x: q_sims[x], reverse=True):
                 if unique_by:
@@ -189,10 +194,10 @@ class MMRService:
                 if len(selected_idx) >= k:
                     break
 
-        # çıktı: (doc, mmr_score)
+        # Output: (doc, mmr_score)
         out = []
         for idx in selected_idx:
-            # nihai mmr puanını hesapla (isteğe bağlı; istersen q_sims dönebilirsin)
+            # Compute final MMR score (optional; you could return q_sims if preferred)
             rel = q_sims[idx]
             div = 0.0
             for j in selected_idx:
