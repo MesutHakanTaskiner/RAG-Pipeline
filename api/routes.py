@@ -82,7 +82,7 @@ class RAGRoutes:
     def _process_simple_rag(self, request: AskRequest, start_time: float) -> AskResponse:
         """Process question using simple RAG without reasoning."""
         # Determine retrieval count
-        k = request.top_k or self.settings.retrieval_k
+        k = self.settings.retrieval_k
         
         # Create year filter
         year_filter = create_year_filter(request.year_from, request.year_to)
@@ -168,7 +168,7 @@ class RAGRoutes:
         """Process simple question with enhanced reasoning."""
         
         # Use standard retrieval
-        k = request.top_k or self.settings.retrieval_k
+        k = self.settings.retrieval_k
         year_filter = create_year_filter(request.year_from, request.year_to)
         
         results = self.vector_service.similarity_search_with_score(
@@ -245,7 +245,7 @@ class RAGRoutes:
                 year_filter = create_year_filter(request.year_from, request.year_to)
             
             # Retrieve documents for sub-question
-            k = request.top_k or self.settings.retrieval_k
+            k = self.settings.retrieval_k
             results = self.vector_service.similarity_search_with_score(
                 query=sub_question.question,
                 k=k,
