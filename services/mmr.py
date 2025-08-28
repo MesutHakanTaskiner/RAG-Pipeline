@@ -124,7 +124,7 @@ class MMRService:
         return np.array(embedding)
     
     def apply_mmr(self, query: str, documents_with_scores: List[Tuple[Document, float]],
-              k: int, lambda_param: Optional[float] = None,
+              k: int, lambda_param: Optional[float] = 0.7,
               unique_by: Optional[str] = "doc_id", max_per_doc: int = 1) -> List[Tuple[Document, float]]:
 
         if not documents_with_scores or k <= 0:

@@ -99,8 +99,7 @@ class RAGRoutes:
             mmr_results = self.mmr_service.apply_mmr(
                 query=request.question,
                 documents_with_scores=results,
-                k=self.settings.context_k,
-                lambda_param=request.mmr_lambda
+                k=self.settings.context_k
             )
             top_context = mmr_results
         else:
@@ -181,8 +180,7 @@ class RAGRoutes:
             top_context = self.mmr_service.apply_mmr(
                 query=request.question,
                 documents_with_scores=results,
-                k=self.settings.context_k,
-                lambda_param=request.mmr_lambda
+                k=self.settings.context_k
             )
         else:
             top_context = results[:self.settings.context_k]
@@ -256,8 +254,7 @@ class RAGRoutes:
                 context_sources = self.mmr_service.apply_mmr(
                     query=sub_question.question,
                     documents_with_scores=results,
-                    k=self.settings.context_k,
-                    lambda_param=request.mmr_lambda
+                    k=self.settings.context_k
                 )
             else:
                 context_sources = results[:self.settings.context_k]
