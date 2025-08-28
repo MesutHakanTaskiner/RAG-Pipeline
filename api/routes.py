@@ -75,9 +75,6 @@ class RAGRoutes:
                 k=k,
                 filter_dict=year_filter
             )
-            
-            print(f"Retrieved {len(results)} documents for the query.")
-
 
             # Apply MMR if requested
             if request.use_mmr and results:
@@ -93,8 +90,6 @@ class RAGRoutes:
                 # Select top context documents without MMR
                 top_context = results[:self.settings.context_k]
         
-            print(len(top_context))
-
             # Format context for LLM
             context_block = format_context_block(
                 top_context, 
