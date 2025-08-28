@@ -51,7 +51,6 @@ class RAGRoutes:
             return HealthResponse(
                 status="ok",
                 collection=self.settings.collection,
-                persist_dir=str(self.settings.chroma_dir),
                 vectors=vector_count,
                 retrieval_k=self.settings.retrieval_k,
                 context_k=self.settings.context_k,
