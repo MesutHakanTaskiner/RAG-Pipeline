@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException
 from models.schemas import AskRequest, AskResponse, HealthResponse, Source
 from services.vector_store import VectorStoreService, create_year_filter
 from services.llm import LLMService
+from services.mmr import MMRService
 from utils.text_processing import format_context_block
 from config.settings import Settings
 
@@ -21,6 +22,7 @@ class RAGRoutes:
         self.settings = settings
         self.vector_service = VectorStoreService(settings)
         self.llm_service = LLMService(settings)
+        self.mmr_service = MMRService(settings)
         self.router = APIRouter()
         self._setup_routes()
     
@@ -74,9 +76,25 @@ class RAGRoutes:
                 filter_dict=year_filter
             )
             
-            # Select top context documents
-            top_context = results[:self.settings.context_k]
-            
+            print(f"Retrieved {len(results)} documents for the query.")
+
+
+            # Apply MMR if requested
+            if request.use_mmr and results:
+                # Apply MMR to get diverse results
+                mmr_results = self.mmr_service.apply_mmr(
+                    query=request.question,
+                    documents_with_scores=results,
+                    k=self.settings.context_k,
+                    lambda_param=request.mmr_lambda
+                )
+                top_context = mmr_results
+            else:
+                # Select top context documents without MMR
+                top_context = results[:self.settings.context_k]
+        
+            print(len(top_context))
+
             # Format context for LLM
             context_block = format_context_block(
                 top_context, 
