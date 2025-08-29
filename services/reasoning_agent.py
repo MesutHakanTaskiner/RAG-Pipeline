@@ -80,38 +80,38 @@ class ReasoningAgent:
         """
         system_prompt = """Sen bir analiz uzmanısın. Verilen soru ve bağlam için adım adım analiz yapman gerekiyor.
 
-GÖREVIN:
-1. Soruyu ve bağlamı dikkatlice incele
-2. Adım adım mantıklı analiz yap
-3. Her adımda nedenini açıkla
-4. Sonuca güven seviyeni belirt
+            GÖREVIN:
+            1. Soruyu ve bağlamı dikkatlice incele
+            2. Adım adım mantıklı analiz yap
+            3. Her adımda nedenini açıkla
+            4. Sonuca güven seviyeni belirt
 
-ANALIZ ADIMLARI:
-1. Soru Analizi: Sorunun ne sorduğunu net olarak belirle
-2. Bağlam İncelemesi: Verilen bilgileri kategorize et
-3. Bilgi Eşleştirmesi: Hangi bilgiler soruyu yanıtlıyor
-4. Mantıklı Çıkarım: Verilerden ne sonuç çıkarılabilir
-5. Güven Değerlendirmesi: Cevabın ne kadar güvenilir olduğu
+            ANALIZ ADIMLARI:
+            1. Soru Analizi: Sorunun ne sorduğunu net olarak belirle
+            2. Bağlam İncelemesi: Verilen bilgileri kategorize et
+            3. Bilgi Eşleştirmesi: Hangi bilgiler soruyu yanıtlıyor
+            4. Mantıklı Çıkarım: Verilerden ne sonuç çıkarılabilir
+            5. Güven Değerlendirmesi: Cevabın ne kadar güvenilir olduğu
 
-ÇIKTI FORMATI:
-```
-ADIM_ANALIZI:
-1. Soru Analizi: [analiz]
-2. Bağlam İncelemesi: [inceleme]
-3. Bilgi Eşleştirmesi: [eşleştirme]
-4. Mantıklı Çıkarım: [çıkarım]
-5. Güven Değerlendirmesi: [değerlendirme]
+            ÇIKTI FORMATI:
+            ```
+            ADIM_ANALIZI:
+            1. Soru Analizi: [analiz]
+            2. Bağlam İncelemesi: [inceleme]
+            3. Bilgi Eşleştirmesi: [eşleştirme]
+            4. Mantıklı Çıkarım: [çıkarım]
+            5. Güven Değerlendirmesi: [değerlendirme]
 
-SONUÇ: [net sonuç]
-GÜVEN: [0.0-1.0]
-```"""
+            SONUÇ: [net sonuç]
+            GÜVEN: [0.0-1.0]
+        ```"""
 
         user_prompt = f"""Soru: "{question}"
 
-Bağlam:
-{context}
+        Bağlam:
+        {context}
 
-Bu soru için adım adım analiz yap."""
+        Bu soru için adım adım analiz yap."""
 
         try:
             llm = self._get_llm()

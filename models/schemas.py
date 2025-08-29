@@ -18,7 +18,6 @@ class AskRequest(BaseModel):
     # Agentic features
     use_reasoning: Optional[bool] = Field(True, description="Enable multi-step reasoning and query decomposition")
     show_reasoning_trace: Optional[bool] = Field(False, description="Include reasoning trace in response")
-    reasoning_depth: Optional[int] = Field(3, ge=1, le=5, description="Maximum reasoning depth for complex questions")
     
     @field_validator('year_to')
     @classmethod
@@ -37,8 +36,7 @@ class AskRequest(BaseModel):
                 "year_to": 2024,
                 "use_mmr": False,
                 "use_reasoning": False,
-                "show_reasoning_trace": False,
-                "reasoning_depth": 3
+                "show_reasoning_trace": False
             }
         }
     )
